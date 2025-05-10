@@ -1,0 +1,48 @@
+FROM alpine:latest
+
+# Install necessary packages
+RUN apk add --no-cache \
+    openssh-server \
+    bash \
+    curl \
+    sudo
+
+# Create ops user
+RUN adduser -D -u 1000 ops && \
+    echo "ops:ops" | chpasswd && \
+    mkdir -p /home/ops/.ssh && \
+    chmod 700 /home/ops/.ssh && \
+    chown -R ops:ops /home/ops && \
+    echo "ops ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/ops
+
+# Set up SSH
+RUN ssh-keygen -A && \
+    mkdir -p /run/sshd
+
+# Create entrypoint script
+RUN echo '#!/bin/bash' > /usr/local/bin/entrypoint.sh && \
+    echo 'set -e' >> /usr/local/bin/entrypoint.sh && \
+    echo '' >> /usr/local/bin/entrypoint.sh && \
+    echo '# Install kubectl if not present' >> /usr/local/bin/entrypoint.sh && \
+    echo 'if [ ! -f /usr/local/bin/kubectl ]; then' >> /usr/local/bin/entrypoint.sh && \
+    echo '    echo "Installing kubectl..."' >> /usr/local/bin/entrypoint.sh && \
+    echo '    curl -L "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl' >> /usr/local/bin/entrypoint.sh && \
+    echo '    chmod +x /usr/local/bin/kubectl' >> /usr/local/bin/entrypoint.sh && \
+    echo 'fi' >> /usr/local/bin/entrypoint.sh && \
+    echo '' >> /usr/local/bin/entrypoint.sh && \
+    echo '# Copy authorized_keys' >> /usr/local/bin/entrypoint.sh && \
+    echo 'if [ -f /tmp/authorized_keys ]; then' >> /usr/local/bin/entrypoint.sh && \
+    echo '    cp /tmp/authorized_keys /home/ops/.ssh/authorized_keys' >> /usr/local/bin/entrypoint.sh && \
+    echo '    chmod 600 /home/ops/.ssh/authorized_keys' >> /usr/local/bin/entrypoint.sh && \
+    echo '    chown ops:ops /home/ops/.ssh/authorized_keys' >> /usr/local/bin/entrypoint.sh && \
+    echo 'fi' >> /usr/local/bin/entrypoint.sh && \
+    echo '' >> /usr/local/bin/entrypoint.sh && \
+    echo '# Start SSH server' >> /usr/local/bin/entrypoint.sh && \
+    echo 'echo "Starting SSH server..."' >> /usr/local/bin/entrypoint.sh && \
+    echo 'exec /usr/sbin/sshd -D' >> /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
+
+# Expose SSH port
+EXPOSE 22
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

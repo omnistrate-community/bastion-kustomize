@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssh-login
+  labels:
+    app: ssh-login
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ssh-login
+  template:
+    metadata:
+      labels:
+        app: ssh-login
+    spec:
+      serviceAccountName: ssh-admin
+      containers:
+      - name: ssh-login
+        image: linuxserver/openssh-server:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: TZ
+          value: "Etc/UTC"
+        - name: PASSWORD_ACCESS
+          value: "false"
+        - name: USER_NAME
+          value: "ops"
+        - name: PUBLIC_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: ssh-keys
+              key: authorized_keys
+        ports:
+        - containerPort: 2222
+          name: ssh
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          # Install kubectl
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && mv kubectl /usr/local/bin/
+
+          # Set up kubectl configuration
+          mkdir -p /home/ops/.kube
+          cat > /home/ops/.kube/config << EOF
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - cluster:
+              certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              server: https://kubernetes.default.svc
+            name: default
+          contexts:
+          - context:
+              cluster: default
+              namespace: default
+              user: default
+            name: default
+          current-context: default
+          users:
+          - name: default
+            user:
+              tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          EOF
+
+          # Set proper ownership
+          chown -R ops:ops /home/ops/.kube
+
+          # Create a helper script to setup kubectl for users on login
+          cat > /etc/profile.d/kubectl-config.sh << 'EOF'
+          # Kubernetes API setup
+          export KUBECONFIG=/home/ops/.kube/config
+          export PATH=$PATH:/usr/local/bin
+          EOF
+
+          # Set up the .bashrc for the ops user for immediate effect
+          cat >> /home/ops/.bashrc << 'EOF'
+          export KUBECONFIG=/home/ops/.kube/config
+          export PATH=$PATH:/usr/local/bin
+          EOF
+
+          chown ops:ops /home/ops/.bashrc
+          chmod +x /etc/profile.d/kubectl-config.sh
+
+          # Start the SSH server
+          /init
+      volumes:
+      - name: ssh-keys-volume
+        configMap:
+          name: ssh-keys
