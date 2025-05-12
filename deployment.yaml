@@ -58,7 +58,7 @@ spec:
           contexts:
           - context:
               cluster: default
-              namespace: default
+              namespace: "{{ $sys.id }}"
               user: default
             name: default
           current-context: default
