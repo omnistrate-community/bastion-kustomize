@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: ssh-login
   annotations:
-    external-dns.alpha.kubernetes.io/hostname: ssh-login.internal.example.com
+    external-dns.alpha.kubernetes.io/hostname: "{{ $sys.network.internalClusterEndpoint }}"
     external-dns.alpha.kubernetes.io/internal: "true"
 spec:
   selector:
